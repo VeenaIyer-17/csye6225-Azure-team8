@@ -96,8 +96,8 @@ resource "random_integer" "ri" {
 }
 
 resource "azurerm_cosmosdb_account" "dynamodb" {
-    name    = "cosmosdb-${random_integer.ri.result}"
-    location = var.location2
+    name                = "cosmosdb-${random_integer.ri.result}"
+    location            = var.location2
     resource_group_name = var.resource_group2
 
     offer_type          = "Standard"
@@ -155,4 +155,55 @@ resource "azurerm_function_app" "lambdafunction" {
     resource_group_name         =  var.resource_group2
     app_service_plan_id         = "${azurerm_app_service_plan.serviceplan.id}"
     storage_connection_string   = "${azurerm_storage_account.storage.primary_connection_string}"
+}
+
+// resource "azurerm_monitor_metric_alertrule" "cloudwatch" {
+//     name                        = "${azurerm_virtual_machine.windows_vm.name}-cpu"
+//     location                    =  var.location2
+//     resource_group_name         =  var.resource_group2
+//     description                 = "An alert rule to watch the metric Percentage CPU"
+//     enabled                     = true
+
+//     resource_id                 = "${azurerm_virtual_machine.windows_vm.id}"
+//     metric_name                 = "Percentage CPU"
+//     operator                    = "GreaterThan"
+//     threshold                   = 75
+//     aggregation                 = "Average"
+//     period                      = "PT5M"
+// }
+
+resource "azurerm_monitor_action_group" "main" {
+  name                          = "example-actiongroup"
+  resource_group_name           = var.resource_group2
+  short_name                    = "exampleact"
+
+//   webhook_receiver {
+//     name                        = "callmyapi"
+//     service_uri                 = "http://example.com/alert"
+//   }
+}
+
+resource "azurerm_monitor_metric_alert" "example" {
+  name                = "example-metricalert"
+  resource_group_name = var.resource_group2
+  scopes              = ["${azurerm_storage_account.storage.id}"]
+  description         = "Action will be triggered when Transactions count is greater than 50."
+
+  criteria {
+    metric_namespace = "Microsoft.Storage/storageAccounts"
+    metric_name      = "Transactions"
+    aggregation      = "Total"
+    operator         = "GreaterThan"
+    threshold        = 50
+
+    dimension {
+      name     = "ApiName"
+      operator = "Include"
+      values   = ["*"]
+    }
+  }
+
+  action {
+    action_group_id = "${azurerm_monitor_action_group.main.id}"
+  }
 }
