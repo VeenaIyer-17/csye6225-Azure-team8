@@ -8,7 +8,26 @@ resource "azurerm_virtual_network" "vnet" {
 
 #Create subnet
 resource "azurerm_subnet" "subnet" {
-    name = "LAN"
+    name                    = "sub"
+    resource_group_name     = var.resource_group1
+    virtual_network_name    = azurerm_virtual_network.vnet.name
+    address_prefix          = "10.0.1.0/24"
+}
+
+resource "azurerm_public_ip" "pubIp" {
+    location = var.location1
+    name = "pubIp"
+    resource_group_name = var.resource_group1
+    allocation_method       = "Dynamic"
+    idle_timeout_in_minutes = 10
+
+    tags = {
+        environment = "prod"
+    }
+}
+
+resource "azurerm_subnet" "subnet1" {
+    name                    = "GatewaySubnet"
     resource_group_name     = var.resource_group1
     virtual_network_name    = azurerm_virtual_network.vnet.name
     address_prefix          = "10.0.0.0/24"
@@ -41,4 +60,39 @@ resource "azurerm_route" "routetest" {
 resource "azurerm_subnet_route_table_association" "association1" {
     subnet_id       = "${azurerm_subnet.subnet.id}"
     route_table_id  = "${azurerm_route_table.routeazure.id}"
+}
+
+resource "azurerm_network_security_group" "networksecuritygroup" {
+  name                = "acceptanceTestSecurityGroup1"
+  location            = var.location1
+  resource_group_name = var.resource_group1
+}
+
+resource "azurerm_network_security_rule" "example" {
+  name                        = "testingsecuritygrouprule"
+  priority                    = 100
+  direction                   = "Outbound"
+  access                      = "Allow"
+  protocol                    = "Tcp"
+  source_port_range           = "*"
+  destination_port_range      = "*"
+  source_address_prefix       = "*"
+  destination_address_prefix  = "*"
+  resource_group_name         = var.resource_group1
+  network_security_group_name = "${azurerm_network_security_group.networksecuritygroup.name}"
+}
+
+resource "azurerm_virtual_network_gateway" "ig" {
+    name                      = "igTest"
+    location                  = var.location1
+    resource_group_name       = var.resource_group1
+    type                      = "Vpn"
+    sku                       = "Basic"
+
+    ip_configuration {
+        name                          = "vnetGatewayConfig"
+        subnet_id                     = "${azurerm_subnet.subnet1.id}"
+        private_ip_address_allocation = "Dynamic"
+        public_ip_address_id          = "${azurerm_public_ip.pubIp.id}"
+    }
 }
