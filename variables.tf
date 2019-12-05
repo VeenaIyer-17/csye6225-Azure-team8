@@ -9,6 +9,18 @@ variable "resourcegroup_location" {
     default = "westus2"
 }
 
+variable "resource_group_name"{
+  default = "myImage"
+}
+
+variable "lambda_filepath" {
+    type=string
+}
+
+variable "packer_image" {
+    default = "myPackerImage1"
+}
+
 variable "admin_username" {
     default = "testadmin"
 }

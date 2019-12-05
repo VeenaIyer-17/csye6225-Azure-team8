@@ -26,7 +26,8 @@ resource "azurerm_lb" "lb" {
   resource_group_name = var.resource_group2
   name = "${var.resource_group2}_lb"
   location = var.location2
-
+  depends_on = [azurerm_public_ip.publicIp]
+  
   frontend_ip_configuration {
     name = "LoadBalancerFrontEnd"
     public_ip_address_id = azurerm_public_ip.publicIp.id
@@ -65,6 +66,14 @@ resource "azurerm_lb_rule" "lb_rule" {
   //  depends_on                     = ["azurerm_lb_probe.lb_probe"]
 }
 
+data "azurerm_resource_group" "image" {
+  name = var.resource_group_name
+}
+
+data "azurerm_image" "image" {
+  name                = var.packer_image
+  resource_group_name = data.azurerm_resource_group.image.name
+}
 
 resource "azurerm_virtual_machine_scale_set" "example" {
   name                = "mytestscaleset-1"
@@ -81,11 +90,15 @@ resource "azurerm_virtual_machine_scale_set" "example" {
   }
 
   storage_profile_image_reference {
-        publisher = "Canonical"
-        offer     = "UbuntuServer"
-        sku       = "16.04-LTS"
-        version   = "latest"
+    id=data.azurerm_image.image.id
   }
+
+  //  storage_profile_image_reference {
+  //       publisher = "Canonical"
+  //       offer     = "UbuntuServer"
+  //       sku       = "16.04-LTS"
+  //       version   = "latest"
+  // }
 
   storage_profile_os_disk {
     name              = ""
@@ -133,7 +146,7 @@ resource "azurerm_virtual_machine_scale_set" "example" {
   }
 }
 
-resource "azurerm_autoscale_setting" "myAutoscaleSetting" {
+resource "azurerm_monitor_autoscale_setting" "myAutoscaleSetting" {
   location = var.location2
   name = "myAutoscaleSetting"
   resource_group_name = var.resource_group2
@@ -233,9 +246,13 @@ resource "azurerm_autoscale_setting" "myAutoscaleSetting" {
 //    }
 //
 //}
+resource "random_integer" "ri" {
+  min = 10000
+  max = 99999
+}
 
 resource "azurerm_mariadb_server" "mdbserver" {
-    name    = "mariadbserver"
+    name    = "mariadbserver-${random_integer.ri.result}"
     location = var.location2
     resource_group_name = var.resource_group2
 
@@ -266,11 +283,6 @@ resource "azurerm_mariadb_database" "mdb" {
     collation           = "utf8_general_ci"
 }
 
-resource "random_integer" "ri" {
-  min = 10000
-  max = 99999
-}
-
 resource "azurerm_cosmosdb_account" "dynamodb" {
     name                = "cosmosdb-${random_integer.ri.result}"
     location            = var.location2
@@ -294,7 +306,7 @@ resource "azurerm_cosmosdb_account" "dynamodb" {
 }
 
 resource "azurerm_storage_account" "storage" {
-    name                     = "csye6225storageazure"
+    name                     = "csye6225storage${random_integer.ri.result}"
     resource_group_name      = var.resource_group2
     location                 = var.location2
     account_tier             = "Standard"
@@ -333,30 +345,11 @@ resource "azurerm_function_app" "lambdafunction" {
     storage_connection_string   = "${azurerm_storage_account.storage.primary_connection_string}"
 }
 
-// resource "azurerm_monitor_metric_alertrule" "cloudwatch" {
-//     name                        = "${azurerm_virtual_machine.windows_vm.name}-cpu"
-//     location                    =  var.location2
-//     resource_group_name         =  var.resource_group2
-//     description                 = "An alert rule to watch the metric Percentage CPU"
-//     enabled                     = true
-
-//     resource_id                 = "${azurerm_virtual_machine.windows_vm.id}"
-//     metric_name                 = "Percentage CPU"
-//     operator                    = "GreaterThan"
-//     threshold                   = 75
-//     aggregation                 = "Average"
-//     period                      = "PT5M"
-// }
 
 resource "azurerm_monitor_action_group" "main" {
   name                          = "example-actiongroup"
   resource_group_name           = var.resource_group2
   short_name                    = "exampleact"
-
-//   webhook_receiver {
-//     name                        = "callmyapi"
-//     service_uri                 = "http://example.com/alert"
-//   }
 }
 
 resource "azurerm_monitor_metric_alert" "example" {
@@ -382,4 +375,21 @@ resource "azurerm_monitor_metric_alert" "example" {
   action {
     action_group_id = "${azurerm_monitor_action_group.main.id}"
   }
+}
+
+data "azurerm_subscription" "primary" {}
+
+resource "azurerm_role_definition" "customrole" {
+  name        = "venom11"
+  scope       = "${data.azurerm_subscription.primary.id}"
+  description = "This is a custom role created via Terraform"
+
+  permissions {
+    actions     = ["*"]
+    not_actions = []
+  }
+
+  assignable_scopes = [
+    "${data.azurerm_subscription.primary.id}" 
+  ]
 }

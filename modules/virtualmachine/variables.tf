@@ -1,7 +1,15 @@
 variable "computer_name" {
     description = "Name of the computer"
 }
- 
+
+variable "resource_group_name"{
+    type = string
+}
+
+variable "packer_image" {
+    type = string
+}
+
 variable "location2" {
     type = string
 }

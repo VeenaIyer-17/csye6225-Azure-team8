@@ -13,9 +13,13 @@ variable "environment" {
     default = "dev"
 }
 
-variable "functionapp" {
-    type = "string"
-    default = "./Azure/HttpTrigger.zip"
+// variable "functionapp" {
+//     type = "string"
+//     #default = "~/Azure/HttpTrigger.zip"
+// }
+
+variable "filepath" {
+    type = string
 }
 
 resource "random_string" "storage_name" {

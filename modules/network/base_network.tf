@@ -26,11 +26,32 @@ resource "azurerm_public_ip" "pubIp" {
     }
 }
 
+resource "azurerm_public_ip" "publicStdIp" {
+    location = var.location1
+    name = "pubStdIp"
+    resource_group_name = var.resource_group1
+    allocation_method       = "Static"
+    sku                     = "Standard"
+    idle_timeout_in_minutes = 10
+
+    tags = {
+        environment = "prod"
+    }
+}
+
 resource "azurerm_subnet" "subnet1" {
     name                    = "GatewaySubnet"
     resource_group_name     = var.resource_group1
     virtual_network_name    = azurerm_virtual_network.vnet.name
     address_prefix          = "10.0.0.0/24"
+}
+
+
+resource "azurerm_subnet" "subnetfirewall" {
+  name                 = "AzureFirewallSubnet"
+  resource_group_name  = var.resource_group1
+  virtual_network_name = azurerm_virtual_network.vnet.name
+  address_prefix       = "10.0.2.0/24"
 }
 
 resource "azurerm_route_table" "routeazure" {
@@ -95,4 +116,16 @@ resource "azurerm_virtual_network_gateway" "ig" {
         private_ip_address_allocation = "Dynamic"
         public_ip_address_id          = "${azurerm_public_ip.pubIp.id}"
     }
+}
+
+resource "azurerm_firewall" "waf" {
+   name                = "waffirewall"
+   location            = var.location1
+   resource_group_name = var.resource_group1
+
+   ip_configuration {
+     name                 = "configuration"
+     subnet_id            = "${azurerm_subnet.subnetfirewall.id}"
+     public_ip_address_id = "${azurerm_public_ip.publicStdIp.id}"
+   }
 }

@@ -20,7 +20,7 @@
           "task": "Image deployment"
       },
   
-      "location": "East US",
+      "location": "West US2",
       "vm_size": "Standard_DS2_v2"
     }],
     "provisioners": [
