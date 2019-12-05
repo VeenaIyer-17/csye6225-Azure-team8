@@ -1,0 +1,44 @@
+{
+    "builders": [{
+      "type": "azure-arm",
+  
+      "client_id": "",
+      "client_secret": "",
+      "tenant_id": "",
+      "subscription_id": "",
+  
+      "managed_image_resource_group_name": "myResourceGroup",
+      "managed_image_name": "myPackerImage2",
+  
+      "os_type": "Linux",
+      "image_publisher": "OpenLogic",
+      "image_offer": "CentOS",
+      "image_sku": "7.5",
+  
+      "azure_tags": {
+          "dept": "Engineering",
+          "task": "Image deployment"
+      },
+  
+      "location": "West US2",
+      "vm_size": "Standard_DS2_v2"
+    }],
+    "provisioners": [
+        {
+            "type": "shell",
+	    "environment_vars": [
+                "FOO=foo"
+            ],           
+            "inline": [
+                "sudo yum -y update",
+                "sudo yum install -y httpd",
+                "sudo yum install -y java-11-openjdk",
+                "sudo systemctl start httpd",
+                "sudo systemctl enable httpd",
+                "sudo yum install -y mariadb-server",
+                "sudo systemctl start mariadb",
+                "sudo systemctl enable mariadb"
+            ]
+        }
+    ]
+  }
