@@ -10,53 +10,229 @@ resource "azurerm_public_ip" "publicIp" {
     }
 }
 
-resource "azurerm_network_interface" "windows_nic" {
-    name = "NIC"
-    location = var.location2
-    resource_group_name = var.resource_group2
+resource "azurerm_public_ip" "instancePublicIp" {
+  location = var.location2
+  name = "publicIp"
+  resource_group_name = var.resource_group2
+  allocation_method       = "Dynamic"
+  idle_timeout_in_minutes = 10
+
+  tags = {
+    environment = "prod"
+  }
+}
+
+resource "azurerm_lb" "lb" {
+  resource_group_name = var.resource_group2
+  name = "${var.resource_group2}_lb"
+  location = var.location2
+
+  frontend_ip_configuration {
+    name = "LoadBalancerFrontEnd"
+    public_ip_address_id = azurerm_public_ip.publicIp.id
+  }
+}
+
+resource "azurerm_lb_backend_address_pool" "backend_pool" {
+  resource_group_name = var.resource_group2
+  loadbalancer_id     = "${azurerm_lb.lb.id}"
+  name                = "BackendPool1"
+}
+
+resource "azurerm_lb_nat_pool" "nat_pool" {
+  resource_group_name            = var.resource_group2
+  loadbalancer_id                = "${azurerm_lb.lb.id}"
+  name                           = "SampleApplicationPool"
+  protocol                       = "Tcp"
+  frontend_port_start            = 442
+  frontend_port_end              = 448
+  backend_port                   = 8080
+  frontend_ip_configuration_name = "LoadBalancerFrontEnd"
+}
+
+resource "azurerm_lb_rule" "lb_rule" {
+  resource_group_name            = var.resource_group2
+  loadbalancer_id                = "${azurerm_lb.lb.id}"
+  name                           = "LBRule"
+  protocol                       = "tcp"
+  frontend_port                  = 80
+  backend_port                   = 80
+  frontend_ip_configuration_name = "LoadBalancerFrontEnd"
+  enable_floating_ip             = false
+  backend_address_pool_id        = "${azurerm_lb_backend_address_pool.backend_pool.id}"
+  idle_timeout_in_minutes        = 5
+  //  probe_id                       = "${azurerm_lb_probe.lb_probe.id}"
+  //  depends_on                     = ["azurerm_lb_probe.lb_probe"]
+}
+
+
+resource "azurerm_virtual_machine_scale_set" "example" {
+  name                = "mytestscaleset-1"
+  location            = var.location2
+  resource_group_name = var.resource_group2
+
+  upgrade_policy_mode  = "Manual"
+
+
+  sku {
+    name     = "Standard_F2"
+    tier     = "Standard"
+    capacity = 2
+  }
+
+  storage_profile_image_reference {
+        publisher = "Canonical"
+        offer     = "UbuntuServer"
+        sku       = "16.04-LTS"
+        version   = "latest"
+  }
+
+  storage_profile_os_disk {
+    name              = ""
+    caching           = "ReadWrite"
+    create_option     = "FromImage"
+    managed_disk_type = "Standard_LRS"
+  }
+
+  storage_profile_data_disk {
+    lun           = 0
+    caching       = "ReadWrite"
+    create_option = "Empty"
+    disk_size_gb  = 10
+  }
+
+  os_profile {
+    computer_name_prefix = "testvm"
+    admin_username       = "myadmin"
+  }
+
+  os_profile_linux_config {
+    disable_password_authentication = true
+
+    ssh_keys {
+      path     = "/home/myadmin/.ssh/authorized_keys"
+      key_data = "${file("~/.ssh/id_rsa.pub")}"
+    }
+  }
+
+  network_profile {
+    name    = "terraformnetworkprofile"
+    primary = true
+
     ip_configuration {
-        name = "ipconfig"
-        subnet_id = var.subnet_id
-        private_ip_address_allocation = "Dynamic"
-        public_ip_address_id = azurerm_public_ip.publicIp.id
+      name                                   = "TestIPConfiguration"
+      primary                                = true
+      subnet_id                              = var.subnet_id
+      load_balancer_backend_address_pool_ids = ["${azurerm_lb_backend_address_pool.backend_pool.id}"]
+      load_balancer_inbound_nat_rules_ids    = ["${azurerm_lb_nat_pool.nat_pool.id}"]
     }
+  }
+
+  tags = {
+    environment = "staging"
+  }
 }
 
-resource "azurerm_virtual_machine" "windows_vm" { 
-    name = var.computer_name
-    location = var.location2
-    resource_group_name = var.resource_group2
-    network_interface_ids = [azurerm_network_interface.windows_nic.id]
-    vm_size = var.vmsize["small"]
-    delete_os_disk_on_termination = true
-    delete_data_disks_on_termination = true
-    
-    storage_image_reference {
-        publisher = var.os_ms["publisher"]
-        offer = var.os_ms["offer"]
-        sku = var.os_ms["sku"]
-        version = var.os_ms["version"]
+resource "azurerm_autoscale_setting" "myAutoscaleSetting" {
+  location = var.location2
+  name = "myAutoscaleSetting"
+  resource_group_name = var.resource_group2
+  target_resource_id = "${azurerm_virtual_machine_scale_set.example.id}"
+  profile {
+    name = "defaultProfile"
+    capacity {
+      default = 2
+      maximum = 5
+      minimum = 2
     }
- 
-    storage_os_disk {
-        name = "OS"
-        caching = "ReadWrite"
-        create_option = "FromImage"
-        managed_disk_type = "Standard_LRS"
+    rule {
+      metric_trigger {
+        metric_name        = "Percentage CPU"
+        metric_resource_id = "${azurerm_virtual_machine_scale_set.example.id}"
+        time_grain         = "PT1M"
+        statistic          = "Average"
+        time_window        = "PT5M"
+        time_aggregation   = "Average"
+        operator           = "GreaterThan"
+        threshold          = 5
+      }
+      scale_action {
+        direction = "Increase"
+        type      = "ChangeCount"
+        value     = "1"
+        cooldown  = "PT1M"
+      }
     }
+    rule {
+      metric_trigger {
+        metric_name        = "Percentage CPU"
+        metric_resource_id = "${azurerm_virtual_machine_scale_set.example.id}"
+        time_grain         = "PT1M"
+        statistic          = "Average"
+        time_window        = "PT5M"
+        time_aggregation   = "Average"
+        operator           = "LessThan"
+        threshold          = 3
+      }
 
-    os_profile {
-        computer_name = var.computer_name
-        admin_username = var.admin_username
-        admin_password = var.admin_password
+      scale_action {
+        direction = "Decrease"
+        type      = "ChangeCount"
+        value     = "1"
+        cooldown  = "PT1M"
+      }
     }
- 
-    os_profile_windows_config {
-        provision_vm_agent = "true"
-        timezone = "Romance Standard Time"
-    }
- 
+  }
 }
+
+
+//resource "azurerm_network_interface" "windows_nic" {
+//    name = "NIC"
+//    location = var.location2
+//    resource_group_name = var.resource_group2
+//    ip_configuration {
+//        name = "ipconfig"
+//        subnet_id = var.subnet_id
+//        private_ip_address_allocation = "Dynamic"
+//        public_ip_address_id = azurerm_public_ip.publicIp.id
+//    }
+//}
+
+//resource "azurerm_virtual_machine" "windows_vm" {
+//    name = var.computer_name
+//    location = var.location2
+//    resource_group_name = var.resource_group2
+//    network_interface_ids = [azurerm_network_interface.windows_nic.id]
+//    vm_size = var.vmsize["small"]
+//    delete_os_disk_on_termination = true
+//    delete_data_disks_on_termination = true
+//
+//    storage_image_reference {
+//        publisher = var.os_ms["publisher"]
+//        offer = var.os_ms["offer"]
+//        sku = var.os_ms["sku"]
+//        version = var.os_ms["version"]
+//    }
+//
+//    storage_os_disk {
+//        name = "OS"
+//        caching = "ReadWrite"
+//        create_option = "FromImage"
+//        managed_disk_type = "Standard_LRS"
+//    }
+//
+//    os_profile {
+//        computer_name = var.computer_name
+//        admin_username = var.admin_username
+//        admin_password = var.admin_password
+//    }
+//
+//    os_profile_windows_config {
+//        provision_vm_agent = "true"
+//        timezone = "Romance Standard Time"
+//    }
+//
+//}
 
 resource "azurerm_mariadb_server" "mdbserver" {
     name    = "mariadbserver"
